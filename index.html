@@ -82,17 +82,8 @@
         .modal.active {
             display: flex; /* Show when active */
         }
-        .loader {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #f59e0b;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        #loading-state {
+            display: none; /* Hide since data is loaded locally */
         }
     </style>
 </head>
@@ -129,9 +120,8 @@
                     <div id="card-gallery" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 overflow-y-auto h-full p-2">
                         <!-- Cards will be injected here by JavaScript -->
                     </div>
-                    <div id="loading-state" class="absolute inset-0 bg-gray-800 bg-opacity-80 flex flex-col items-center justify-center">
-                        <div class="loader"></div>
-                        <p class="mt-4 text-yellow-400 font-semibold">กำลังโหลดข้อมูลการ์ด...</p>
+                    <div id="loading-state">
+                         <!-- Hidden by CSS -->
                     </div>
                 </div>
             </div>
@@ -190,19 +180,16 @@
         <img id="tooltip-img" src="" class="w-64 rounded-md" alt="Card Preview">
     </div>
 
+    <!-- Load Card Data First -->
+    <script src="card-data.js"></script>
 
+    <!-- Main Application Logic -->
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
-            
-            // --- CONFIGURATION ---
-            // ใส่ลิงก์ที่ได้จากการ "เผยแพร่สู่เว็บ" เป็น CSV ที่นี่
-            const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1qQdYT16eqWe746usp_ilUErPIH7w2hJEadCV05f5h_0/pub?output=csv';
-
+        document.addEventListener('DOMContentLoaded', () => {
             // DOM Elements
             const cardGallery = document.getElementById('card-gallery');
             const deckSlotsContainer = document.getElementById('deck-slots');
             const deckCountSpan = document.getElementById('deck-count');
-            const loadingState = document.getElementById('loading-state');
             
             // Filters
             const nameSearch = document.getElementById('name-search');
@@ -234,84 +221,6 @@
             let currentDeck = Array(50).fill(null);
             let draggedCardId = null;
             let draggedFromSlot = null;
-            
-            // --- Data Fetching and Initialization ---
-
-            function transformGoogleDriveUrl(url) {
-                try {
-                    if (!url || !url.includes('drive.google.com')) return url;
-                    const fileIdMatch = url.match(/id=([a-zA-Z0-9_-]+)/) || url.match(/d\/([a-zA-Z0-9_-]+)/);
-                    if (fileIdMatch) {
-                        const fileId = fileIdMatch[1];
-                        return `https://drive.google.com/uc?export=view&id=${fileId}`;
-                    }
-                    return url;
-                } catch (error) {
-                    console.warn(`Could not transform URL: ${url}`);
-                    return url;
-                }
-            }
-
-            function parseCsvRow(rowStr) {
-                const values = [];
-                let currentVal = '';
-                let inQuotes = false;
-                for (let i = 0; i < rowStr.length; i++) {
-                    const char = rowStr[i];
-                    if (char === '"' && (i === 0 || rowStr[i-1] !== '"')) {
-                         inQuotes = !inQuotes;
-                         continue;
-                    }
-                    if (char === ',' && !inQuotes) {
-                        values.push(currentVal.trim().replace(/^"|"$/g, ''));
-                        currentVal = '';
-                    } else {
-                        currentVal += char;
-                    }
-                }
-                values.push(currentVal.trim().replace(/^"|"$/g, ''));
-                return values;
-            }
-            
-            async function loadCardDataFromSheet() {
-                if (!GOOGLE_SHEET_CSV_URL || GOOGLE_SHEET_CSV_URL.includes('ใส่ลิงก์')) {
-                    loadingState.innerHTML = '<p class="text-red-500 font-bold">ยังไม่ได้ตั้งค่าลิงก์ Google Sheet!</p><p class="text-sm text-gray-400">โปรดทำตาม instructions.md และใส่ลิงก์ในไฟล์ index.html</p>';
-                    return [];
-                }
-
-                const proxyUrl = 'https://api.allorigins.win/raw?url=';
-                const requestUrl = `${proxyUrl}${encodeURIComponent(GOOGLE_SHEET_CSV_URL)}`;
-
-                try {
-                    const response = await fetch(requestUrl);
-                    if (!response.ok) {
-                        throw new Error(`Network response was not ok: ${response.statusText}`);
-                    }
-                    const csvText = await response.text();
-                    const rows = csvText.split(/\r\n|\n/).map(row => row.trim());
-                    const headers = rows[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                    const dataRows = rows.slice(1);
-
-                    const cardJson = dataRows.map(rowStr => {
-                        if (!rowStr) return null;
-                        const values = parseCsvRow(rowStr);
-                        let card = {};
-                        headers.forEach((header, i) => {
-                            card[header] = values[i] || '';
-                        });
-                        if (card.imageUrl) {
-                            card.imageUrl = transformGoogleDriveUrl(card.imageUrl);
-                        }
-                        return card;
-                    }).filter(card => card && card.id);
-
-                    return cardJson;
-                } catch (error) {
-                    console.error('Failed to load card data:', error);
-                    loadingState.innerHTML = '<p class="text-red-500 font-bold">เกิดข้อผิดพลาดในการโหลดข้อมูลการ์ด!</p><p class="text-sm text-gray-400">โปรดตรวจสอบว่าลิงก์ Google Sheet ถูกต้องและเผยแพร่เป็น CSV แล้ว</p>';
-                    return [];
-                }
-            }
 
             function initializeApp(cardData) {
                 allCardData = cardData;
@@ -337,8 +246,6 @@
                 confirmSaveBtn.addEventListener('click', saveCurrentDeck);
                 viewCollectionBtn.addEventListener('click', openCollectionModal);
                 closeCollectionBtn.addEventListener('click', () => collectionModal.classList.remove('active'));
-                
-                loadingState.style.display = 'none';
             }
 
             // --- Card Gallery and Filtering ---
@@ -591,9 +498,12 @@
             }
 
             // --- Start the App ---
-            const cardData = await loadCardDataFromSheet();
-            if (cardData.length > 0) {
-                initializeApp(cardData);
+            // `cardDatabase` is now globally available from `card-data.js`
+            if (typeof cardDatabase !== 'undefined' && cardDatabase.length > 0) {
+                initializeApp(cardDatabase);
+            } else {
+                console.error("Card data is not loaded. Ensure card-data.js is in the same directory.");
+                document.getElementById('card-gallery-wrapper').innerHTML = `<p class="text-red-500 text-center p-4">ไม่พบข้อมูลการ์ด! กรุณาตรวจสอบว่าไฟล์ card-data.js อยู่ในโฟลเดอร์เดียวกันกับไฟล์ index.html</p>`;
             }
         });
     </script>
